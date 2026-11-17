@@ -92,6 +92,94 @@ class RequestContextMiddlewareTest extends TestCase
             ->assertJsonPath('now_timezone_name', 'America/New_York');
     }
 
+    public function test_it_prefers_the_x_locale_header_over_accept_language(): void
+    {
+        $response = $this->getJson(self::URL, ['X-Locale' => 'en', 'Accept-Language' => 'ko-KR']);
+
+        $response->assertOk()->assertJsonPath('request_locale', 'en');
+    }
+
+    public function test_it_rejects_an_unsupported_x_locale_header(): void
+    {
+        $response = $this->getJson(self::URL, ['X-Locale' => 'fr', 'Accept-Language' => 'ko-KR,ko;q=0.9']);
+
+        $response->assertOk()->assertJsonPath('request_locale', 'ko');
+    }
+
+    public function test_the_locale_cookie_is_used_when_the_header_is_missing(): void
+    {
+        $response = $this->withUnencryptedCookies(['locale' => 'en'])
+            ->withCredentials()
+            ->getJson(self::URL, ['Accept-Language' => 'ko-KR']);
+
+        $response->assertOk()->assertJsonPath('request_locale', 'en');
+    }
+
+    public function test_an_unsupported_locale_cookie_is_ignored(): void
+    {
+        $response = $this->withUnencryptedCookies(['locale' => 'fr'])
+            ->withCredentials()
+            ->getJson(self::URL, ['Accept-Language' => 'ko-KR']);
+
+        $response->assertOk()->assertJsonPath('request_locale', 'ko');
+    }
+
+    public function test_the_x_locale_header_wins_over_the_cookie(): void
+    {
+        $response = $this->withUnencryptedCookies(['locale' => 'ko'])
+            ->withCredentials()
+            ->getJson(self::URL, ['X-Locale' => 'en']);
+
+        $response->assertOk()->assertJsonPath('request_locale', 'en');
+    }
+
+    public function test_the_user_locale_attribute_is_used_when_nothing_else_is_set(): void
+    {
+        $user = $this->makeUser('Europe/London', 'en');
+
+        $response = $this->actingAs($user)->getJson(self::URL, ['Accept-Language' => 'ko-KR']);
+
+        $response->assertOk()->assertJsonPath('request_locale', 'en');
+    }
+
+    public function test_an_invalid_user_locale_attribute_is_ignored(): void
+    {
+        $user = $this->makeUser('Europe/London', 'fr');
+
+        $response = $this->actingAs($user)->getJson(self::URL, ['Accept-Language' => 'ko-KR']);
+
+        $response->assertOk()->assertJsonPath('request_locale', 'ko');
+    }
+
+    public function test_the_timezone_cookie_is_used_when_the_header_is_missing(): void
+    {
+        $response = $this->withUnencryptedCookies(['tz' => 'America/New_York'])
+            ->withCredentials()
+            ->getJson(self::URL, []);
+
+        $response->assertOk()
+            ->assertJsonPath('timezone', 'America/New_York')
+            ->assertJsonPath('now_timezone_name', 'America/New_York');
+    }
+
+    public function test_an_invalid_timezone_cookie_is_ignored(): void
+    {
+        $response = $this->withUnencryptedCookies(['tz' => 'Mars/Phobos'])
+            ->withCredentials()
+            ->getJson(self::URL, []);
+
+        $response->assertOk()->assertJsonPath('timezone', 'Asia/Seoul');
+    }
+
+    public function test_the_x_timezone_header_wins_over_the_cookie(): void
+    {
+        $response = $this->withUnencryptedCookies(['tz' => 'Europe/London'])
+            ->withCredentials()
+            ->getJson(self::URL, ['X-Timezone' => 'Asia/Seoul']);
+
+        $response->assertOk()->assertJsonPath('timezone', 'Asia/Seoul');
+    }
+
     public function test_it_uses_the_authenticated_users_timezone_when_the_header_is_missing(): void
     {
         $user = $this->makeUser('Europe/London');
@@ -129,17 +217,18 @@ class RequestContextMiddlewareTest extends TestCase
         $this->assertMatchesRegularExpression('/\+09:00$/', $today);
     }
 
-    private function makeUser(string $timezone): User
+    private function makeUser(string $timezone, ?string $locale = null): User
     {
         $user = new class extends User
         {
             protected $guarded = [];
         };
 
-        $user->forceFill([
+        $user->forceFill(array_filter([
             'name' => 'Test User',
             'timezone' => $timezone,
-        ]);
+            'locale' => $locale,
+        ], fn ($value) => $value !== null));
 
         return $user;
     }

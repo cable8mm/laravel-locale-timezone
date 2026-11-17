@@ -4,7 +4,7 @@
 [![Total Downloads](https://poser.pugx.org/cable8mm/laravel-request-context/downloads)](https://packagist.org/packages/cable8mm/laravel-request-context)
 [![License](https://poser.pugx.org/cable8mm/laravel-request-context/license)](https://packagist.org/packages/cable8mm/laravel-request-context)
 
-Thin per-request **locale** and **timezone** for Laravel. One middleware, two headers, sane fallbacks — without the machinery of a full route-localization package.
+Thin per-request **locale** and **timezone** for Laravel. One middleware, two headers (and cookies for server-rendered apps), sane fallbacks — without the machinery of a full route-localization package.
 
 ```php
 $request->getLocale();  // "ko"  — the locale negotiated for this request (Accept-Language)
@@ -21,7 +21,9 @@ Laravel decides three things globally and leaves the rest to you:
 - `__()` and `trans()` follow `App::getLocale()` — the translator's locale. No per-request translator exists. You must call `App::setLocale()` yourself (conventionally, in a middleware).
 - The `Request` object itself knows nothing about timezones. Symfony's request ships a `getLocale()`/`setLocale()` pair, but nothing in Laravel wires it to useful behavior — and `Accept-Language` is not consumed anywhere in the framework either.
 
-This package is the missing glue: a middleware that negotiates the client's `Accept-Language` and reads the client's `X-Timezone` header, and makes both available consistently on the request, on the container and on the translator. It is intentionally thin and Laravel-idiomatic.
+This package is the missing glue: a middleware that negotiates the client's language and reads the client's timezone, and makes both available consistently on the request, on the container and on the translator. It is intentionally thin and Laravel-idiomatic.
+
+The resolution chains (first match wins — `X-*` header → cookie → user record → browser default → configured fallback) work for server-rendered and SPA/API apps alike.
 
 It is **not** [mcamara/laravel-localization](https://github.com/mcamara/laravel-localization): that package builds localized routes (`/ko/about`, `/en/about`) and ships a translation repository. If you don't need route localization, this package is all you need.
 
@@ -29,7 +31,7 @@ It is **not** [mcamara/laravel-localization](https://github.com/mcamara/laravel-
 
 1. **`app.timezone` stays fixed — the application's canonical timezone.** A user's preference never mutates the application's configuration. The client's timezone lives in a **request-scoped context** bound in the container (`Cable8mm\RequestContext\RequestContext`) for the duration of the request only.
 2. **The browser does not send its timezone.** There is no standard HTTP header carrying a timezone. Clients must send one explicitly (e.g. our `X-Timezone` convention — see Client setup). The middleware validates it against the IANA list and falls back silently; it never rejects the request.
-3. **The header always wins; the user profile is the fallback; a configured default is the last resort.** When the request is authenticated, the stored `timezone` attribute of the user model is used if the header is missing or invalid. This is the correct behavior for members who travel.
+3. **Explicit preference always wins; the browser's guess is the fallback.** Locale: `X-Locale` header → `locale` cookie → the authenticated user's locale → `Accept-Language` → `fallback_locale`. Timezone: `X-Timezone` header → `tz` cookie → the authenticated user's timezone → `default_timezone`. The header wins over the cookie because an explicitly repeated header is the most current intent; the cookie is the persisted choice for full-page browsers.
 4. **`App::getLocale()` and `Request::getLocale()` are kept consistent on purpose.** `Request::getLocale()` describes what the client asked for; `App::getLocale()` drives `__()`/`trans()`. The middleware sets both to the negotiated value so no code path ever sees "the client asked for Korean but the page rendered in English".
 5. **No global state is mutated for the timezone.** `date_default_timezone_set()` is never called. Everything Laravel does by default (`Carbon::now()`, `today()`, timestamps on model instances) continues to use `config('app.timezone')`. User-facing time math should take the request timezone explicitly via `$request->now()` or `app(RequestContext::class)->timezone`.
 
@@ -65,6 +67,25 @@ On Laravel 11+ (no `Http/Kernel.php`), register it in `bootstrap/app.php`:
 php artisan vendor:publish --tag=config
 ```
 
+## Resolution rules
+
+**Locale** — first match wins:
+
+1. `X-Locale` header (name configurable), must be one of `locales`
+2. `locale` cookie (name configurable), must be one of `locales`
+3. the authenticated user's locale attribute (`user_locale_attribute`), when set and supported
+4. `Accept-Language` header, negotiated against `locales` (q-values honored). Symfony resolves unmatched values to the **first** supported locale
+5. `fallback_locale` when `locales` is empty
+
+**Timezone** — first match wins:
+
+1. `X-Timezone` header (name configurable), validated against the IANA list
+2. `tz` cookie (name configurable), validated against the IANA list
+3. the authenticated user's timezone attribute (`user_timezone_attribute`), when set and valid
+4. `default_timezone`
+
+Invalid values are never rejected; the middleware proceeds to the next candidate. Nothing is persisted server-side except when *your* language switcher endpoint sets the cookie (see Client setup).
+
 ## Usage
 
 ### Locale
@@ -91,19 +112,93 @@ In CLI (Horizon workers, schedules, tinker) there is no middleware, so the scope
 
 ## Client setup
 
-Browsers do not volunteer a timezone. Ship the following in your frontend bootstrap:
+Browsers volunteer `Accept-Language` automatically — locale negotiation works out of the box. They do **not** volunteer a timezone; ship the following in your frontend bootstrap.
+
+### With Laravel's Vite build (axios)
+
+Most Laravel apps bundle their JS with Vite. Add the headers to the default axios instance in `resources/js/bootstrap.js` (the file Breeze/Jetstream ship):
 
 ```js
-const timezone = Intl.DateTimeFormat().resolvedOptions().timeZone; // e.g. "Asia/Seoul"
+import axios from 'axios';
 
-// axios
-axios.defaults.headers.common['X-Timezone'] = timezone;
+window.axios = axios;
 
-// fetch
-fetch(url, { headers: { 'X-Timezone': timezone } });
+window.axios.defaults.headers.common['X-Timezone'] =
+    Intl.DateTimeFormat().resolvedOptions().timeZone; // e.g. "Asia/Seoul"
+
+// Optional, once the user has picked a language:
+const locale = localStorage.getItem('locale');
+if (locale) {
+    window.axios.defaults.headers.common['X-Locale'] = locale;
+}
 ```
 
-On iOS/Android, read the device timezone and add it as a request header in the same way (`TimeZone.current` / `TimeZone.getDefault()`).
+and make sure your blade view loads the app with `@vite(['resources/js/app.js'])`. The module runs before any components fire requests, so the first request already carries the header.
+
+### Language switching (select / button / link)
+
+Two different problems hide behind "user picks a language":
+
+**SPA / API clients** store the choice and repeat it on every request — the header wins on the next call, no server state involved:
+
+```js
+const button = document.querySelector('[data-locale="en"]');
+
+button.addEventListener('click', () => {
+    localStorage.setItem('locale', 'en');
+    window.axios.defaults.headers.common['X-Locale'] = 'en';
+    // force a re-render / reload with the new locale
+    location.reload();
+});
+```
+
+**Server-rendered (Blade) pages** cannot attach headers to a document request — the browser owns the request. Use a tiny endpoint that sets the `locale` cookie, then redirect back:
+
+```php
+// routes/web.php
+Route::post('/locale/{locale}', function (string $locale) {
+    abort_unless(in_array($locale, config('request-context.locales'), true), 404);
+
+    // Cookie is encrypted by the EncryptCookies middleware, which the
+    // application decrypts again on the next request — nothing to configure.
+    return back()->withCookie(cookie()->forever('locale', $locale));
+})->name('locale.store');
+```
+
+```blade
+<form method="POST" action="{{ route('locale.store', 'en') }}">
+    @csrf
+    <button type="submit">English</button>
+</form>
+```
+
+The middleware then negotiates: `X-Locale` header → `locale` cookie → user's `locale` attribute → `Accept-Language` → `fallback_locale`. The first paint after a switch already renders in the chosen language.
+
+> If you prefer to set the cookie from JavaScript (`document.cookie = 'locale=en;…'`), Laravel's `EncryptCookies` middleware will read it as garbage and treat it as absent — add `'locale'` (and `'tz'` if used) to the `$except` list of your `App\Http\Middleware\EncryptCookies`. The server-side endpoint above needs no such change.
+
+**Timezone switching** works exactly the same, with the `tz` cookie for document requests and `X-Timezone` for API requests.
+
+### With plain `fetch()`
+
+```js
+fetch(url, { headers: { 'X-Timezone': Intl.DateTimeFormat().resolvedOptions().timeZone } });
+```
+
+### Without a build step (inline script)
+
+```html
+<script>
+    fetch('{{ route('api.example') }}', {
+        headers: { 'X-Timezone': Intl.DateTimeFormat().resolvedOptions().timeZone },
+    });
+</script>
+```
+
+### A note on timing
+
+The IANA timezone must be set on the client **before** the first request fires. With module-scope code (Vite) this is automatic; with plain `fetch()` calls, wrap your API calls in a small helper that injects the header instead of repeating it.
+
+On iOS/Android, read the device timezone and add it as a request header the same way (`TimeZone.current` / `TimeZone.getDefault()`). The browser header is useless there — your native HTTP client must send it too.
 
 ## The timezone contract (why storage stays boring)
 
@@ -131,9 +226,9 @@ Because it mutates process-global state: unrelated libraries, queued jobs and mo
 
 | Context | `__()` language |
 | --- | --- |
+| HTTP with `X-Locale` header or `locale` cookie | the header/cookie locale (if supported) |
 | HTTP with `Accept-Language: ko` | Korean |
-| HTTP with `Accept-Language: fr` (unsupported) | the first supported locale in `locales` |
-| HTTP with an empty / missing `Accept-Language` | the first supported locale in `locales` (or `fallback_locale` when `locales` is empty) |
+| HTTP with an unsupported `Accept-Language` | the first supported locale in `locales` |
 | CLI / Horizon / schedules | `config('app.locale')` — untouched |
 
 If you ever need strict separation — e.g. admin UI always in English but emails in the recipient's language — pass the locale explicitly: `__('key', [], 'ko')`. It's the only place Laravel exposes the third argument.
@@ -151,9 +246,13 @@ They are equal inside HTTP requests handled by the middleware, and deliberately 
 | --- | --- | --- |
 | `locales` | `['ko', 'en']` | Supported locales, negotiated against `Accept-Language` (q-values honored). Unmatched requests get the **first** entry — put your primary locale first. |
 | `fallback_locale` | `ko` | Used when `locales` is empty, and to seed the CLI/scoped fallback context |
+| `locale_header` | `X-Locale` | Header carrying the client's explicit locale choice (SPA / API clients) |
+| `locale_cookie` | `locale` | Cookie carrying the persisted locale choice (server-rendered apps) |
 | `timezone_header` | `X-Timezone` | Header to look for the IANA timezone |
-| `default_timezone` | `Asia/Seoul` | Used when the header is missing/invalid and no user timezone exists |
+| `timezone_cookie` | `tz` | Cookie to look for the IANA timezone |
 | `user_timezone_attribute` | `timezone` | Authenticatable model attribute to read as the user's timezone. Set to `null` to disable |
+| `user_locale_attribute` | `locale` | Authenticatable model attribute to read as the user's locale. Set to `null` to disable |
+| `default_timezone` | `Asia/Seoul` | Used when header, cookie and the user record provide nothing usable |
 | `set_content_language` | `true` | Add a `Content-Language` header to every response (caches vary on it) |
 
 ## Octane
