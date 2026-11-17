@@ -1,6 +1,6 @@
 <?php
 
-namespace Cable8mm\RequestContext;
+namespace Cable8mm\LocaleTimezone;
 
 /**
  * Immutable per-request context holding the negotiated locale and timezone.
@@ -9,7 +9,7 @@ namespace Cable8mm\RequestContext;
  * left untouched. This object is bound to the container for the lifecycle of
  * the request and represents the *client's* context, not the application's.
  */
-final class RequestContext
+final class LocaleTimezone
 {
     public function __construct(
         public readonly string $locale,

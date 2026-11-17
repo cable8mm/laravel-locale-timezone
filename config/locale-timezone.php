@@ -23,7 +23,7 @@ return [
     | is empty. HTTP requests pick the first supported locale instead.
     |
     */
-    'fallback_locale' => env('REQUEST_CONTEXT_FALLBACK_LOCALE', 'ko'),
+    'fallback_locale' => env('LOCALE_TIMEZONE_FALLBACK_LOCALE', 'ko'),
 
     /*
     |--------------------------------------------------------------------------
@@ -41,8 +41,8 @@ return [
     | in App\Http\Middleware\EncryptCookies if you want the JS-set path.
     |
     */
-    'locale_header' => env('REQUEST_CONTEXT_LOCALE_HEADER', 'X-Locale'),
-    'locale_cookie' => env('REQUEST_CONTEXT_LOCALE_COOKIE', 'locale'),
+    'locale_header' => env('LOCALE_TIMEZONE_LOCALE_HEADER', 'X-Locale'),
+    'locale_cookie' => env('LOCALE_TIMEZONE_LOCALE_COOKIE', 'locale'),
 
     /*
     |--------------------------------------------------------------------------
@@ -55,8 +55,8 @@ return [
     |     Intl.DateTimeFormat().resolvedOptions().timeZone  // "Asia/Seoul"
     |
     */
-    'timezone_header' => env('REQUEST_CONTEXT_TIMEZONE_HEADER', 'X-Timezone'),
-    'timezone_cookie' => env('REQUEST_CONTEXT_TIMEZONE_COOKIE', 'tz'),
+    'timezone_header' => env('LOCALE_TIMEZONE_TIMEZONE_HEADER', 'X-Timezone'),
+    'timezone_cookie' => env('LOCALE_TIMEZONE_TIMEZONE_COOKIE', 'tz'),
 
     /*
     |--------------------------------------------------------------------------
@@ -80,7 +80,7 @@ return [
     | usable. Usually you want the primary audience of your service here.
     |
     */
-    'default_timezone' => env('REQUEST_CONTEXT_DEFAULT_TIMEZONE', 'Asia/Seoul'),
+    'default_timezone' => env('LOCALE_TIMEZONE_DEFAULT_TIMEZONE', 'Asia/Seoul'),
 
     /*
     |--------------------------------------------------------------------------
