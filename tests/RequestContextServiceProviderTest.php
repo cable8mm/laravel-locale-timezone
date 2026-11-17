@@ -11,9 +11,13 @@ class RequestContextServiceProviderTest extends TestCase
     {
         $this->assertSame(['ko', 'en'], config('request-context.locales'));
         $this->assertSame('ko', config('request-context.fallback_locale'));
+        $this->assertSame('X-Locale', config('request-context.locale_header'));
+        $this->assertSame('locale', config('request-context.locale_cookie'));
         $this->assertSame('X-Timezone', config('request-context.timezone_header'));
+        $this->assertSame('tz', config('request-context.timezone_cookie'));
         $this->assertSame('Asia/Seoul', config('request-context.default_timezone'));
         $this->assertSame('timezone', config('request-context.user_timezone_attribute'));
+        $this->assertSame('locale', config('request-context.user_locale_attribute'));
         $this->assertTrue(config('request-context.set_content_language'));
     }
 
