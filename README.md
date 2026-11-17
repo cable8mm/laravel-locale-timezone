@@ -1,8 +1,8 @@
-# Laravel Request Context
+# Laravel Locale Timezone
 
-[![Latest Stable Version](https://poser.pugx.org/cable8mm/laravel-request-context/v)](https://packagist.org/packages/cable8mm/laravel-request-context)
-[![Total Downloads](https://poser.pugx.org/cable8mm/laravel-request-context/downloads)](https://packagist.org/packages/cable8mm/laravel-request-context)
-[![License](https://poser.pugx.org/cable8mm/laravel-request-context/license)](https://packagist.org/packages/cable8mm/laravel-request-context)
+[![Latest Stable Version](https://poser.pugx.org/cable8mm/laravel-locale-timezone/v)](https://packagist.org/packages/cable8mm/laravel-locale-timezone)
+[![Total Downloads](https://poser.pugx.org/cable8mm/laravel-locale-timezone/downloads)](https://packagist.org/packages/cable8mm/laravel-locale-timezone)
+[![License](https://poser.pugx.org/cable8mm/laravel-locale-timezone/license)](https://packagist.org/packages/cable8mm/laravel-locale-timezone)
 
 Thin per-request **locale** and **timezone** for Laravel. One middleware, two headers (and cookies for server-rendered apps), sane fallbacks — without the machinery of a full route-localization package.
 
@@ -29,16 +29,16 @@ It is **not** [mcamara/laravel-localization](https://github.com/mcamara/laravel-
 
 ## Design decisions
 
-1. **`app.timezone` stays fixed — the application's canonical timezone.** A user's preference never mutates the application's configuration. The client's timezone lives in a **request-scoped context** bound in the container (`Cable8mm\RequestContext\RequestContext`) for the duration of the request only.
+1. **`app.timezone` stays fixed — the application's canonical timezone.** A user's preference never mutates the application's configuration. The client's timezone lives in a **request-scoped context** bound in the container (`Cable8mm\LocaleTimezone\LocaleTimezone`) for the duration of the request only.
 2. **The browser does not send its timezone.** There is no standard HTTP header carrying a timezone. Clients must send one explicitly (e.g. our `X-Timezone` convention — see Client setup). The middleware validates it against the IANA list and falls back silently; it never rejects the request.
 3. **Explicit preference always wins; the browser's guess is the fallback.** Locale: `X-Locale` header → `locale` cookie → the authenticated user's locale → `Accept-Language` → `fallback_locale`. Timezone: `X-Timezone` header → `tz` cookie → the authenticated user's timezone → `default_timezone`. The header wins over the cookie because an explicitly repeated header is the most current intent; the cookie is the persisted choice for full-page browsers.
 4. **`App::getLocale()` and `Request::getLocale()` are kept consistent on purpose.** `Request::getLocale()` describes what the client asked for; `App::getLocale()` drives `__()`/`trans()`. The middleware sets both to the negotiated value so no code path ever sees "the client asked for Korean but the page rendered in English".
-5. **No global state is mutated for the timezone.** `date_default_timezone_set()` is never called. Everything Laravel does by default (`Carbon::now()`, `today()`, timestamps on model instances) continues to use `config('app.timezone')`. User-facing time math should take the request timezone explicitly via `$request->now()` or `app(RequestContext::class)->timezone`.
+5. **No global state is mutated for the timezone.** `date_default_timezone_set()` is never called. Everything Laravel does by default (`Carbon::now()`, `today()`, timestamps on model instances) continues to use `config('app.timezone')`. User-facing time math should take the request timezone explicitly via `$request->now()` or `app(LocaleTimezone::class)->timezone`.
 
 ## Installation
 
 ```bash
-composer require cable8mm/laravel-request-context
+composer require cable8mm/laravel-locale-timezone
 ```
 
 Requires PHP 8.2+ and Laravel 10–13.
@@ -49,7 +49,7 @@ Requires PHP 8.2+ and Laravel 10–13.
 // app/Http/Kernel.php (Laravel 10)
 protected $middleware = [
     // ...
-    \Cable8mm\RequestContext\Http\Middleware\RequestContextMiddleware::class,
+    \Cable8mm\LocaleTimezone\Http\Middleware\LocaleTimezoneMiddleware::class,
 ];
 ```
 
@@ -57,7 +57,7 @@ On Laravel 11+ (no `Http/Kernel.php`), register it in `bootstrap/app.php`:
 
 ```php
 ->withMiddleware(function (Middleware $middleware) {
-    $middleware->append(\Cable8mm\RequestContext\Http\Middleware\RequestContextMiddleware::class);
+    $middleware->append(\Cable8mm\LocaleTimezone\Http\Middleware\LocaleTimezoneMiddleware::class);
 })
 ```
 
@@ -157,7 +157,7 @@ button.addEventListener('click', () => {
 ```php
 // routes/web.php
 Route::post('/locale/{locale}', function (string $locale) {
-    abort_unless(in_array($locale, config('request-context.locales'), true), 404);
+    abort_unless(in_array($locale, config('locale-timezone.locales'), true), 404);
 
     // Cookie is encrypted by the EncryptCookies middleware, which the
     // application decrypts again on the next request — nothing to configure.
@@ -235,7 +235,7 @@ If you ever need strict separation — e.g. admin UI always in English but email
 
 ## How `Request::getLocale()` and `App::getLocale()` differ
 
-- `Request::getLocale()` (Symfony) — **what the client asked for.** Present always; negotiated by this package against `config('request-context.locales')`.
+- `Request::getLocale()` (Symfony) — **what the client asked for.** Present always; negotiated by this package against `config('locale-timezone.locales')`.
 - `App::getLocale()` — **what the translator currently uses.** Set by this package to the same value on HTTP requests; never touched on CLI.
 
 They are equal inside HTTP requests handled by the middleware, and deliberately different on CLI (`en` default on the request, `config('app.locale')` on the translator).
@@ -257,7 +257,7 @@ They are equal inside HTTP requests handled by the middleware, and deliberately 
 
 ## Octane
 
-The package binds `RequestContext` in the container scoped to the request; Octane flushes scoped bindings per request. No global state is mutated, so there is nothing to leak between requests.
+The package binds `LocaleTimezone` in the container scoped to the request; Octane flushes scoped bindings per request. No global state is mutated, so there is nothing to leak between requests.
 
 ## Failure modes
 

@@ -1,12 +1,12 @@
 <?php
 
-namespace Cable8mm\RequestContext;
+namespace Cable8mm\LocaleTimezone;
 
 use Illuminate\Http\Request;
 use Illuminate\Support\Carbon;
 use Illuminate\Support\ServiceProvider;
 
-class RequestContextServiceProvider extends ServiceProvider
+class LocaleTimezoneServiceProvider extends ServiceProvider
 {
     /**
      * Register any application services.
@@ -14,14 +14,14 @@ class RequestContextServiceProvider extends ServiceProvider
     public function register(): void
     {
         $this->mergeConfigFrom(
-            __DIR__.'/../config/request-context.php',
-            'request-context'
+            __DIR__.'/../config/locale-timezone.php',
+            'locale-timezone'
         );
 
         // Fallback context for contexts without the middleware (CLI, tests).
-        $this->app->scoped(RequestContext::class, fn () => new RequestContext(
-            (string) config('request-context.fallback_locale', 'ko'),
-            (string) config('request-context.default_timezone', 'Asia/Seoul')
+        $this->app->scoped(LocaleTimezone::class, fn () => new LocaleTimezone(
+            (string) config('locale-timezone.fallback_locale', 'ko'),
+            (string) config('locale-timezone.default_timezone', 'Asia/Seoul')
         ));
     }
 
@@ -31,7 +31,7 @@ class RequestContextServiceProvider extends ServiceProvider
     public function boot(): void
     {
         $this->publishes([
-            __DIR__.'/../config/request-context.php' => config_path('request-context.php'),
+            __DIR__.'/../config/locale-timezone.php' => config_path('locale-timezone.php'),
         ], 'config');
 
         $this->registerMacros();
@@ -47,7 +47,7 @@ class RequestContextServiceProvider extends ServiceProvider
     private function registerMacros(): void
     {
         Request::macro('timezone', function () {
-            return app(RequestContext::class)->timezone;
+            return app(LocaleTimezone::class)->timezone;
         });
 
         Request::macro('now', function (?string $timezone = null) {

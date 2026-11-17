@@ -1,5 +1,5 @@
 {
-    "name": "cable8mm/laravel-request-context",
+    "name": "cable8mm/laravel-locale-timezone",
     "description": "Per-request locale and timezone context for Laravel: Accept-Language and X-Timezone headers, scoped container binding, request macros and sane fallbacks.",
     "keywords": [
         "laravel",
@@ -9,10 +9,10 @@
         "i18n"
     ],
     "license": "MIT",
-    "homepage": "https://github.com/cable8mm/laravel-request-context",
+    "homepage": "https://github.com/cable8mm/laravel-locale-timezone",
     "support": {
-        "issues": "https://github.com/cable8mm/laravel-request-context/issues",
-        "source": "https://github.com/cable8mm/laravel-request-context"
+        "issues": "https://github.com/cable8mm/laravel-locale-timezone/issues",
+        "source": "https://github.com/cable8mm/laravel-locale-timezone"
     },
     "authors": [
         {
@@ -33,12 +33,12 @@
     },
     "autoload": {
         "psr-4": {
-            "Cable8mm\\RequestContext\\": "src/"
+            "Cable8mm\\LocaleTimezone\\": "src/"
         }
     },
     "autoload-dev": {
         "psr-4": {
-            "Cable8mm\\RequestContext\\Tests\\": "tests/"
+            "Cable8mm\\LocaleTimezone\\Tests\\": "tests/"
         }
     },
     "scripts": {
@@ -52,7 +52,7 @@
     "extra": {
         "laravel": {
             "providers": [
-                "Cable8mm\\RequestContext\\RequestContextServiceProvider"
+                "Cable8mm\\LocaleTimezone\\LocaleTimezoneServiceProvider"
             ]
         }
     },

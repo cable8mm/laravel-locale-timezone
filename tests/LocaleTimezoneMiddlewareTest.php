@@ -1,21 +1,21 @@
 <?php
 
-namespace Cable8mm\RequestContext\Tests;
+namespace Cable8mm\LocaleTimezone\Tests;
 
-use Cable8mm\RequestContext\Http\Middleware\RequestContextMiddleware;
+use Cable8mm\LocaleTimezone\Http\Middleware\LocaleTimezoneMiddleware;
 use Illuminate\Foundation\Auth\User;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Route;
 
-class RequestContextMiddlewareTest extends TestCase
+class LocaleTimezoneMiddlewareTest extends TestCase
 {
-    private const URL = '/test/request-context';
+    private const URL = '/test/locale-timezone';
 
     protected function setUp(): void
     {
         parent::setUp();
 
-        Route::middleware(RequestContextMiddleware::class)
+        Route::middleware(LocaleTimezoneMiddleware::class)
             ->get(self::URL, function (Request $request) {
                 return response()->json([
                     'request_locale' => $request->getLocale(),
